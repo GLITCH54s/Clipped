@@ -43,7 +43,7 @@ function Save-Logo([int]$size, [string]$name) {
     $bmp.Dispose()
 }
 
-Save-Logo 50 'StoreLogo.png'
+Save-Logo 300 'StoreLogo.png'
 Save-Logo 44 'Square44x44Logo.png'
 Save-Logo 150 'Square150x150Logo.png'
 Save-Logo 310 'Square310x310Logo.png'

@@ -46,7 +46,7 @@ function New-Icon([int]$size, [string]$path) {
   $g.Dispose(); $bmp.Dispose()
 }
 
-New-Icon 50 "$root\Assets\StoreLogo.png"
+New-Icon 300 "$root\Assets\StoreLogo.png"
 New-Icon 150 "$root\Assets\Square150x150Logo.png"
 New-Icon 44 "$root\Assets\Square44x44Logo.png"
 New-Icon 64 "$root\ProviderAssets\Clipped_Icon.png"

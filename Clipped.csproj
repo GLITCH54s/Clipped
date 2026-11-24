@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets\Clipped.ico</ApplicationIcon>
+    <AssemblyName>Clipped</AssemblyName>
+    <RootNamespace>Clipped</RootNamespace>
+    <Version>0.1.0</Version>
+    <Title>Clipped</Title>
+    <Product>Clipped</Product>
+    <Company>Clipped contributors</Company>
+    <Description>Clipboard picker and snippet library for Windows</Description>
+    <Copyright>© 2026 Clipped contributors · MIT license</Copyright>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Widget\**" />
+    <None Remove="Widget\**" />
+    <EmbeddedResource Remove="Widget\**" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Store package for Clipped: the WinForms dashboard plus the widget provider in one MSIX.
+
+  The values below are local placeholders matching the store packaging lane. build-msix.ps1
+  overrides Identity/Publisher/PublisherDisplayName/MinVersion at pack time, so a Store upload
+  only needs -IdentityName/-Publisher/-PublisherDisplayName from Partner Center > Product identity
+  (and a new -Version for every upload).
+
+  Data note: FileSystemWriteVirtualization is disabled so %APPDATA%\Clipped stays the real
+  folder the unpackaged build also uses (and survives uninstall). That requires the
+  unvirtualizedResources restricted capability. Registry writes stay virtualized, which is why
+  WindowsIntegration skips its HKCU registrations when it detects a packaged process.
+-->
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+    xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+    xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+    xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap uap3 uap5 com desktop6 rescap">
+
+  <Identity Name="Clipped" Publisher="CN=Clipped OSS" Version="0.1.0.0" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Clipped</DisplayName>
+    <PublisherDisplayName>Clipped OSS</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <!-- Required by ClippedWidget.exe; the Store resolves the framework automatically. -->
+    <PackageDependency
+        Name="Microsoft.WindowsAppRuntime.2"
+        MinVersion="2.5.1.0"
+        Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+        Executable="Clipped.exe"
+        EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+          DisplayName="Clipped"
+          Description="Clipboard picker and snippet library for Windows."
+          BackgroundColor="transparent"
+          Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- Same scheme the unpackaged build registers under HKCU\Software\Classes. -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="clipped">
+            <uap:DisplayName>Clipped link</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+
+        <!-- Defaults to off; the user turns it on in Settings > Apps > Startup. -->
+        <uap5:Extension Category="windows.startupTask"
+            Executable="Clipped.exe"
+            EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask TaskId="ClippedStartup" Enabled="false" DisplayName="Clipped" />
+        </uap5:Extension>
+
+        <!-- Widget provider: packaged COM server + Widgets board registration. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="Widget\ClippedWidget.exe" DisplayName="Clipped Widget Provider">
+              <com:Class Id="969db025-0b6a-4782-ba4c-c728327c41a4" DisplayName="Clipped Widget Provider" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <uap3:Extension Category="windows.appExtension">
+          <uap3:AppExtension
+              Name="com.microsoft.windows.widgets"
+              DisplayName="Clipped"
+              Id="ClippedWidgetProvider"
+              PublicFolder="Public">
+            <uap3:Properties>
+              <WidgetProvider>
+                <ProviderIcons>
+                  <Icon Path="Assets\Square44x44Logo.png" />
+                </ProviderIcons>
+                <Activation>
+                  <CreateInstance ClassId="969db025-0b6a-4782-ba4c-c728327c41a4" />
+                </Activation>
+                <Definitions>
+                  <Definition
+                      Id="Clipped_Recent"
+                      DisplayName="Clipped"
+                      Description="Copy one of your recent clips with a tap."
+                      AllowMultiple="false">
+                    <Capabilities>
+                      <Capability><Size Name="small" /></Capability>
+                      <Capability><Size Name="medium" /></Capability>
+                      <Capability><Size Name="large" /></Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons>
+                        <Icon Path="ProviderAssets\Clipped_Icon.png" />
+                      </Icons>
+                      <Screenshots>
+                        <Screenshot Path="ProviderAssets\Clipped_Screenshot.png" DisplayAltText="Clipped widget showing recent clips" />
+                      </Screenshots>
+                    </ThemeResources>
+                  </Definition>
+                </Definitions>
+              </WidgetProvider>
+            </uap3:Properties>
+          </uap3:AppExtension>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+</Package>

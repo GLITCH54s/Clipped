@@ -144,7 +144,8 @@ bash installer/build.sh
 ```
 
 One command: it publishes a self-contained win-x64 build, compiles the Inno Setup script and
-writes both artifacts into `%CLIPPED_BUILD_DIR%\dist` (defaults to `D:\build\clipped-installer\dist`).
+writes both artifacts into `%CLIPPED_BUILD_DIR%\dist` (defaults to a `build/clipped-installer/dist`
+folder beside the repo).
 
 - **`Clipped-Setup-0.1.0.exe`** — per-user install into `%LOCALAPPDATA%\Programs\Clipped`, no
   UAC needed. Adds Start-menu entries for the picker, the dashboard and settings, an optional

@@ -16,10 +16,9 @@ $widget = $PSScriptRoot
 $build = Join-Path $widget "bin\$Configuration\net9.0-windows10.0.19041.0\win-x64"
 $out = Join-Path $widget 'package-out'
 
-$dotnet = 'dotnet'
-foreach ($candidate in @("$env:DOTNET_ROOT\dotnet.exe", 'D:\dotnet-sdk\dotnet.exe', 'D:\Apps\dotnet\dotnet.exe')) {
-    if ($candidate -and (Test-Path $candidate)) { $dotnet = $candidate; break }
-}
+$dotnet = if ($env:DOTNET_ROOT -and (Test-Path "$env:DOTNET_ROOT\dotnet.exe")) {
+    "$env:DOTNET_ROOT\dotnet.exe"
+} else { 'dotnet' }
 
 & $dotnet build (Join-Path $widget 'ClippedWidget.csproj') -c $Configuration | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'build failed' }

@@ -249,6 +249,7 @@ public sealed class AppController : ApplicationContext
     {
         try
         {
+            Log.Info("Hotkey fired");
             TogglePicker();
         }
         catch (Exception ex)
@@ -273,6 +274,7 @@ public sealed class AppController : ApplicationContext
         if (fg != IntPtr.Zero && fg != Picker.Handle && (Dashboard is null || fg != Dashboard.Handle))
             LastExternalWindow = fg;
         Picker.Open(LastExternalWindow);
+        Log.Info("Picker opened visible=" + Picker.Visible);
     }
 
     public void CommitText(string text, IntPtr target)

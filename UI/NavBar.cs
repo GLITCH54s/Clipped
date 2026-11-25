@@ -185,7 +185,32 @@ public sealed class DarkMenuRenderer : ToolStripRenderer
         base.OnRenderArrow(e);
     }
 
-    protected override void OnRenderImageMargin(ToolStripRenderEventArgs e) { }
+    protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
+    {
+        using var brush = new SolidBrush(Theme.Surface);
+        e.Graphics.FillRectangle(brush, e.AffectedBounds);
+    }
+
+    protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        var r = e.ImageRectangle;
+        if (r.Width < 6 || r.Height < 6) return;
+        float w = Math.Max(1.4f, r.Height / 9f);
+        using var pen = new Pen(e.Item.Enabled ? Theme.Accent : Theme.Faint, w)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+        g.DrawLines(pen, new[]
+        {
+            new PointF(r.X + r.Width * 0.14f, r.Y + r.Height * 0.52f),
+            new PointF(r.X + r.Width * 0.40f, r.Y + r.Height * 0.78f),
+            new PointF(r.X + r.Width * 0.88f, r.Y + r.Height * 0.22f),
+        });
+    }
 }
 
 public static class DarkMenus
@@ -198,7 +223,7 @@ public static class DarkMenus
             BackColor = Theme.Surface,
             ForeColor = Theme.Text,
             Font = Theme.Ui(9f),
-            ShowImageMargin = false,
+            ShowImageMargin = true,
             Padding = new Padding(4),
         };
         return menu;

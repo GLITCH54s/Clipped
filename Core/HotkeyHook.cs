@@ -149,6 +149,7 @@ public sealed class HotkeyHook : IDisposable
     // never see a Win down whose up we later eat, or every following keystroke turns into
     // a Win shortcut. Non-combo chords are replayed to the OS with SendInput instead.
     private bool _capture;
+    private int _captureAt;
     private bool _replayed;
     private int _replayVk;
     private int _comboVk;
@@ -195,14 +196,17 @@ public sealed class HotkeyHook : IDisposable
 
         if (isUp) _held.Remove(vk);
 
-        // Safety net: Win was released without us seeing the up (secure desktop, hook
-        // chain change). Drop the capture so the desktop never keeps a phantom Win.
-        if (_capture && !winKey && !Down(Native.VK_LWIN) && !Down(Native.VK_RWIN))
+        // Safety net for a Win up that never reached us (secure desktop, hook chain
+        // change). The OS never saw the swallowed Win down, so GetAsyncKeyState always
+        // reports "up" here — checking it cancelled every capture before the chord
+        // matched. Age the capture out instead.
+        if (_capture && unchecked(Environment.TickCount - _captureAt) > 5000)
             EndCapture(injectStart: false);
 
         if (isDown && winKey && !_capture && _combos.Exists(c => c.Win))
         {
             _capture = true;
+            _captureAt = Environment.TickCount;
             _comboFired = false;
             _comboVk = 0;
             _replayed = false;

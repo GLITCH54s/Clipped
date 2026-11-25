@@ -56,6 +56,9 @@ land in the same list with a thumbnail, so you can paste one back without openin
 Image clips are pruned automatically (the newest 30, about 100 MB in total) so they cannot fill
 the disk.
 
+History stays in step with the Windows clipboard while Clipped runs, and whatever is on the
+clipboard when it starts is captured too — so nothing you copied before launch goes missing.
+
 ### 🗄️ One dashboard
 Everything lives in a single window with three pages — **Library** (your tabs and blocks),
 **History** (everything you copied, searchable) and **Settings** (hotkey, appearance, startup,

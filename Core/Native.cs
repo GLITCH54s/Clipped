@@ -80,6 +80,9 @@ internal static class Native
     public static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
 
     [DllImport("user32.dll")]
+    public static extern uint GetClipboardSequenceNumber();
+
+    [DllImport("user32.dll")]
     public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
     [DllImport("user32.dll")]

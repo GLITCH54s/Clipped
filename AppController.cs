@@ -34,7 +34,7 @@ public sealed class AppController : ApplicationContext
         _hook = new HotkeyHook();
         _hook.Pressed += OnHotkey;
 
-        _watcher = new ClipboardWatcher();
+        _watcher = new ClipboardWatcher(poll: !headless);
         _watcher.TextCopied += text => Store.AddHistory(text);
         _watcher.ImageCopied += image =>
         {
@@ -102,6 +102,10 @@ public sealed class AppController : ApplicationContext
             _hook.Install();
             ApplyHotkey();
             if (settings.ShowTrayIcon) SetupTray();
+
+            // Pick up whatever was copied before Clipped started; history then stays in
+            // step with the Windows clipboard for as long as the app runs.
+            _watcher.Sync();
         }
 
         if (!string.IsNullOrEmpty(deepLink))

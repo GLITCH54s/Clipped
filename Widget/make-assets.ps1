@@ -1,55 +1,34 @@
+# Renders the widget package icons from the canonical smirk logo so the package
+# matches the app icon: same artwork, transparent background, no plate.
 Add-Type -AssemblyName System.Drawing
 $root = Join-Path $PSScriptRoot 'Package'
+$source = Join-Path (Split-Path $PSScriptRoot -Parent) 'docs\assets\logo.png'
 New-Item -ItemType Directory -Force "$root\Assets" | Out-Null
 New-Item -ItemType Directory -Force "$root\ProviderAssets" | Out-Null
 
-function New-Icon([int]$size, [string]$path) {
-  $bmp = New-Object System.Drawing.Bitmap $size, $size
-  $g = [System.Drawing.Graphics]::FromImage($bmp)
-  $g.SmoothingMode = 'AntiAlias'
-  $g.Clear([System.Drawing.Color]::Transparent)
-  $pad = [Math]::Max(1, [int]($size * 0.06))
-  $accent = [System.Drawing.Color]::FromArgb(255, 139, 124, 246)
-  $bg = [System.Drawing.Color]::FromArgb(255, 26, 23, 43)
-  $r = [int]($size * 0.22)
-  $path2 = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $rect = New-Object System.Drawing.RectangleF($pad, $pad, ($size - 2 * $pad), ($size - 2 * $pad))
-  $d = $r * 2
-  $path2.AddArc($rect.X, $rect.Y, $d, $d, 180, 90)
-  $path2.AddArc($rect.Right - $d, $rect.Y, $d, $d, 270, 90)
-  $path2.AddArc($rect.Right - $d, $rect.Bottom - $d, $d, $d, 0, 90)
-  $path2.AddArc($rect.X, $rect.Bottom - $d, $d, $d, 90, 90)
-  $path2.CloseFigure()
-  $g.FillPath((New-Object System.Drawing.SolidBrush $bg), $path2)
-
-  # clipboard body
-  $bw = $size * 0.44; $bh = $size * 0.52
-  $bx = ($size - $bw) / 2; $by = $size * 0.27
-  $body = New-Object System.Drawing.RectangleF($bx, $by, $bw, $bh)
-  $pen = New-Object System.Drawing.Pen($accent, ([Math]::Max(2, $size * 0.055)))
-  $bp = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $br = [int]($size * 0.07)
-  $bd = $br * 2
-  $bp.AddArc($body.X, $body.Y, $bd, $bd, 180, 90)
-  $bp.AddArc($body.Right - $bd, $body.Y, $bd, $bd, 270, 90)
-  $bp.AddArc($body.Right - $bd, $body.Bottom - $bd, $bd, $bd, 0, 90)
-  $bp.AddArc($body.X, $body.Bottom - $bd, $bd, $bd, 90, 90)
-  $bp.CloseFigure()
-  $g.DrawPath($pen, $bp)
-
-  # clip on top
-  $cw = $size * 0.22; $ch = $size * 0.09
-  $clip = New-Object System.Drawing.RectangleF((($size - $cw) / 2), ($size * 0.22), $cw, $ch)
-  $g.FillRectangle((New-Object System.Drawing.SolidBrush $accent), $clip)
-
-  $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-  $g.Dispose(); $bmp.Dispose()
+function Save-Logo([int]$size, [string]$path) {
+  $src = [System.Drawing.Image]::FromFile($source)
+  try {
+    $bmp = New-Object System.Drawing.Bitmap $size, $size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CompositingMode = 'SourceCopy'
+    $g.Clear([System.Drawing.Color]::Transparent)
+    $g.CompositingMode = 'SourceOver'
+    $g.InterpolationMode = 'HighQualityBicubic'
+    $g.SmoothingMode = 'AntiAlias'
+    $g.PixelOffsetMode = 'HighQuality'
+    $g.DrawImage($src, 0, 0, $size, $size)
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose(); $bmp.Dispose()
+  } finally {
+    $src.Dispose()
+  }
 }
 
-New-Icon 300 "$root\Assets\StoreLogo.png"
-New-Icon 150 "$root\Assets\Square150x150Logo.png"
-New-Icon 44 "$root\Assets\Square44x44Logo.png"
-New-Icon 64 "$root\ProviderAssets\Clipped_Icon.png"
+Save-Logo 300 "$root\Assets\StoreLogo.png"
+Save-Logo 150 "$root\Assets\Square150x150Logo.png"
+Save-Logo 44  "$root\Assets\Square44x44Logo.png"
+Save-Logo 64  "$root\ProviderAssets\Clipped_Icon.png"
 
 # Screenshot: 300x150 mock of the card
 $bmp = New-Object System.Drawing.Bitmap 300, 150

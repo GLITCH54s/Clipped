@@ -27,8 +27,8 @@ public sealed class PickerForm : Form
         public EmojiEntry[] Entries = Array.Empty<EmojiEntry>();
     }
 
-    private const int BaseW = 416;
-    private const int BaseH = 636;
+    private const int BaseW = 368;
+    private const int BaseH = 616;
     private const int BasePad = 24;
     private const int BaseFooterH = 48;
     private const int BaseTabsY = 24;

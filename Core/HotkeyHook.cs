@@ -207,6 +207,7 @@ public sealed class HotkeyHook : IDisposable
         {
             _capture = true;
             _captureAt = Environment.TickCount;
+            _held.Clear();
             _comboFired = false;
             _comboVk = 0;
             _replayed = false;

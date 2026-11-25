@@ -1,3 +1,6 @@
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -76,6 +79,11 @@ public sealed class Store
         Data.Settings.RecentEmoji ??= new List<string>();
         if (Data.Settings.RecentEmoji.Count > 24)
             Data.Settings.RecentEmoji.RemoveRange(24, Data.Settings.RecentEmoji.Count - 24);
+
+        // Image clips whose PNG is gone are dead weight, and PNGs left behind by a
+        // crash or an old entry would otherwise sit in %APPDATA% forever.
+        Data.History.RemoveAll(h => h.ImagePath is not null && !File.Exists(h.ImagePath));
+        CleanupImageFiles();
     }
 
     private static string InferIcon(string name)
@@ -155,7 +163,7 @@ public sealed class Store
         if (text.Length > 200_000) text = text[..200_000];
         text = text.Replace("\0", "");
 
-        var existing = Data.History.FindIndex(h => h.Text == text);
+        var existing = Data.History.FindIndex(h => h.Text == text && h.ImagePath is null);
         if (existing >= 0)
         {
             var entry = Data.History[existing];
@@ -168,17 +176,124 @@ public sealed class Store
             Data.History.Insert(0, new HistoryEntry { Text = text, CopiedAt = DateTime.Now });
         }
 
-        var limit = Math.Clamp(Data.Settings.HistoryLimit, 10, 500);
-        if (Data.History.Count > limit)
-        {
-            Data.History.RemoveRange(limit, Data.History.Count - limit);
-        }
-
+        TrimHistory();
         NotifyChanged();
+    }
+
+    public string ImageDir => Path.Combine(DataDir, "images");
+
+    private const int MaxImageHistory = 30;
+    private const long MaxImageStoreBytes = 100L * 1024 * 1024;
+
+    public void AddImageHistory(Image image)
+    {
+        try
+        {
+            using var ms = new MemoryStream();
+            image.Save(ms, ImageFormat.Png);
+            var png = ms.ToArray();
+            var name = Convert.ToHexString(SHA256.HashData(png))[..16].ToLowerInvariant() + ".png";
+            Directory.CreateDirectory(ImageDir);
+            var path = Path.Combine(ImageDir, name);
+            if (!File.Exists(path)) File.WriteAllBytes(path, png);
+
+            var existing = Data.History.FindIndex(h => h.ImagePath == path);
+            if (existing >= 0)
+            {
+                var entry = Data.History[existing];
+                Data.History.RemoveAt(existing);
+                entry.CopiedAt = DateTime.Now;
+                Data.History.Insert(0, entry);
+            }
+            else
+            {
+                Data.History.Insert(0, new HistoryEntry
+                {
+                    ImagePath = path,
+                    ImageWidth = image.Width,
+                    ImageHeight = image.Height,
+                    CopiedAt = DateTime.Now,
+                });
+            }
+
+            var images = Data.History.Where(h => h.ImagePath is not null).ToList();
+            if (images.Count > MaxImageHistory)
+            {
+                foreach (var old in images.Skip(MaxImageHistory))
+                {
+                    Data.History.Remove(old);
+                    DeleteImageFile(old);
+                }
+            }
+
+            PruneImageBudget();
+            TrimHistory();
+            NotifyChanged();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Could not store image clip", ex);
+        }
+    }
+
+    private void PruneImageBudget()
+    {
+        var images = Data.History.Where(h => h.ImagePath is not null).ToList();
+        long total = 0;
+        for (int i = 0; i < images.Count; i++)
+        {
+            long size = 0;
+            try { size = new FileInfo(images[i].ImagePath!).Length; } catch { }
+            total += size;
+            if (i == 0 || total <= MaxImageStoreBytes) continue;
+
+            foreach (var dropped in images.Skip(i))
+            {
+                Data.History.Remove(dropped);
+                DeleteImageFile(dropped);
+            }
+            break;
+        }
+    }
+
+    private void CleanupImageFiles()
+    {
+        try
+        {
+            if (!Directory.Exists(ImageDir)) return;
+            var used = new HashSet<string>(
+                Data.History.Where(h => h.ImagePath is not null).Select(h => h.ImagePath!),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var file in Directory.EnumerateFiles(ImageDir, "*.png"))
+            {
+                if (used.Contains(file)) continue;
+                try { File.Delete(file); } catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Image cleanup failed", ex);
+        }
+    }
+
+    private void TrimHistory()
+    {
+        var limit = Math.Clamp(Data.Settings.HistoryLimit, 10, 500);
+        if (Data.History.Count <= limit) return;
+        foreach (var dropped in Data.History.Skip(limit))
+            DeleteImageFile(dropped);
+        Data.History.RemoveRange(limit, Data.History.Count - limit);
+    }
+
+    private static void DeleteImageFile(HistoryEntry entry)
+    {
+        if (string.IsNullOrEmpty(entry.ImagePath)) return;
+        try { if (File.Exists(entry.ImagePath)) File.Delete(entry.ImagePath); } catch { }
     }
 
     public void ClearHistory()
     {
+        foreach (var entry in Data.History) DeleteImageFile(entry);
         Data.History.Clear();
         NotifyChanged();
     }
@@ -186,6 +301,7 @@ public sealed class Store
     public void RemoveHistoryAt(int index)
     {
         if (index < 0 || index >= Data.History.Count) return;
+        DeleteImageFile(Data.History[index]);
         Data.History.RemoveAt(index);
         NotifyChanged();
     }

@@ -938,7 +938,11 @@ public sealed class DashboardForm : Form
             _copy.Click += (_, _) =>
             {
                 if (_index < 0 || _index >= _owner.App.Store.Data.History.Count) return;
-                Paster.Copy(_owner.App.Store.Data.History[_index].Text);
+                var entry = _owner.App.Store.Data.History[_index];
+                if (entry.ImagePath is { Length: > 0 } path)
+                    Paster.PasteImageInto(IntPtr.Zero, path, false);
+                else
+                    Paster.Copy(entry.Text);
             };
 
             _save.Click += (_, _) => ShowSaveMenu();
@@ -963,6 +967,8 @@ public sealed class DashboardForm : Form
         private void ShowSaveMenu()
         {
             if (_index < 0 || _index >= _owner.App.Store.Data.History.Count) return;
+            var entry = _owner.App.Store.Data.History[_index];
+            if (entry.ImagePath is { Length: > 0 }) return;
             var menu = DarkMenus.Create();
             foreach (var tab in _owner.App.Store.Data.Tabs)
             {
@@ -992,9 +998,11 @@ public sealed class DashboardForm : Form
             var history = _owner.App.Store.Data.History;
             var entries = history.Select(h => new ItemList.Entry
             {
-                Title = Block.OneLine(h.Text).Length == 0 ? "(whitespace)" : Shorten(h.Text, 64),
+                Title = h.ImagePath is { Length: > 0 }
+                    ? "Image"
+                    : Block.OneLine(h.Text).Length == 0 ? "(whitespace)" : Shorten(h.Text, 64),
                 Sub = h.CopiedAt.ToString("HH:mm") + "  ·  " + h.CopiedAt.ToString("dd MMM"),
-                Tag = h.Text.Length + " ch",
+                Tag = h.ImagePath is { Length: > 0 } ? "image" : h.Text.Length + " ch",
             }).ToList();
             _list.SetItems(entries, Math.Max(0, Math.Min(_index, entries.Count - 1)));
             _index = _list.SelectedIndex;
@@ -1013,8 +1021,11 @@ public sealed class DashboardForm : Form
                 return;
             }
             var h = history[_index];
-            _text.Input.Text = h.Text;
-            _meta.Text = h.CopiedAt.ToString("dddd, dd MMM yyyy  ·  HH:mm:ss") + "  ·  " + h.Text.Length + " characters";
+            bool image = h.ImagePath is { Length: > 0 };
+            _save.Enabled = !image;
+            _text.Input.Text = image ? "Image" : h.Text;
+            _meta.Text = h.CopiedAt.ToString("dddd, dd MMM yyyy  ·  HH:mm:ss") +
+                         (image ? "  ·  image clip" : "  ·  " + h.Text.Length + " characters");
         }
 
         public void ApplyScale() => LayoutPage();

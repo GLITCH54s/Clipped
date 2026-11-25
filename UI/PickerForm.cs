@@ -15,6 +15,7 @@ public sealed class PickerForm : Form
         public string Sub = "";
         public string Tag = "";
         public string? Paste;
+        public string? ImagePath;
         public Block? Block;
         public string? TabName;
     }
@@ -56,6 +57,7 @@ public sealed class PickerForm : Form
     private readonly List<(RectangleF Rect, int Index)> _gifChipHits = new();
     private readonly List<GifItem> _gifItems = new();
     private readonly Dictionary<string, GifPreview> _gifPreviews = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Bitmap?> _thumbs = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _gifBusy = new(StringComparer.Ordinal);
     private readonly List<(RectangleF Rect, string Id)> _tabHits = new();
     private readonly List<(RectangleF Rect, int Index)> _catHits = new();
@@ -111,6 +113,7 @@ public sealed class PickerForm : Form
     private readonly System.Windows.Forms.Timer _dismissTimer;
     private int _focusRetried;
     private bool _everFocused;
+    private bool _escSent;
 
     private Font _fPanelTitle = Theme.Display(15f, FontStyle.Bold);
     private Font _fTitle = Theme.Ui(9.8f);
@@ -240,14 +243,28 @@ public sealed class PickerForm : Form
         ResizeToMode();
         PositionOnCursorMonitor();
         Build();
+
+        _focusRetried = 0;
+        _everFocused = false;
+        _escSent = false;
+
+        // Windows' own clipboard panel paints above the search flyout. Collapse the
+        // flyout up front and go topmost so ours does too instead of appearing behind it.
+        var current = Native.GetForegroundWindow();
+        if (current != IntPtr.Zero && IsShellFlyout(current))
+        {
+            _escSent = true;
+            Native.SendEscape();
+            Log.Info("Shell flyout dismissed to take focus");
+        }
+
         Show();
+        Native.SetTopMost(Handle, true);
         _openedAt = Environment.TickCount;
         Native.ForceForeground(Handle);
         _search.Focus();
         _search.Select(_search.TextLength, 0);
         Invalidate();
-        _focusRetried = 0;
-        _everFocused = false;
         if (!_app.Headless) _dismissTimer.Start();
     }
 
@@ -266,6 +283,7 @@ public sealed class PickerForm : Form
     public void ClosePicker()
     {
         _dismissTimer.Stop();
+        if (IsHandleCreated) Native.SetTopMost(Handle, false);
         if (!Visible) return;
         _busyClosing = false;
         Hide();
@@ -299,18 +317,44 @@ public sealed class PickerForm : Form
         }
 
         // Never activated: another app owns the foreground and refuses to yield.
-        // Retry a couple of times, then drop the panel rather than leave it stuck on top.
-        if (age < 1000 && _focusRetried < 2)
+        // The shell search flyout locks the foreground hard — AttachThreadInput and
+        // SetForegroundWindow both fail until it collapses, and only Esc collapses it.
+        if (!_escSent && age >= 450 && IsShellFlyout(fg))
+        {
+            _escSent = true;
+            Native.SendEscape();
+            Log.Info("Shell flyout dismissed to take focus");
+        }
+
+        if (age < 2200 && _focusRetried < 5)
         {
             _focusRetried++;
             Native.ForceForeground(Handle);
             _search.Focus();
             return;
         }
-        if (age >= 1400)
+        if (age >= 3000)
         {
             Log.Info("Picker dismissed: never took focus");
             ClosePicker();
+        }
+    }
+
+    private static bool IsShellFlyout(IntPtr hwnd)
+    {
+        var cls = new System.Text.StringBuilder(256);
+        Native.GetClassName(hwnd, cls, 256);
+        if (cls.ToString() != "Windows.UI.Core.CoreWindow") return false;
+
+        Native.GetWindowThreadProcessId(hwnd, out uint pid);
+        try
+        {
+            var name = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName;
+            return name is "SearchHost" or "StartMenuExperienceHost" or "ShellExperienceHost";
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -487,6 +531,18 @@ public sealed class PickerForm : Form
             case Mode.Recent:
                 foreach (var h in store.Data.History)
                 {
+                    if (h.ImagePath is { Length: > 0 } imagePath)
+                    {
+                        _items.Add(new Item
+                        {
+                            Title = "Image",
+                            Sub = ImageInfo(h) + "  ·  " + Ago(h.CopiedAt),
+                            Tag = "clip",
+                            ImagePath = imagePath,
+                        });
+                        continue;
+                    }
+
                     _items.Add(new Item
                     {
                         Title = Trim(Block.OneLine(h.Text), 110),
@@ -540,6 +596,23 @@ public sealed class PickerForm : Form
 
                 foreach (var h in store.Data.History)
                 {
+                    if (h.ImagePath is { Length: > 0 } imagePath)
+                    {
+                        if ("image".StartsWith(q, StringComparison.OrdinalIgnoreCase) ||
+                            "screenshot".StartsWith(q, StringComparison.OrdinalIgnoreCase) ||
+                            "picture".StartsWith(q, StringComparison.OrdinalIgnoreCase))
+                        {
+                            scored.Add((6, new Item
+                            {
+                                Title = "Image",
+                                Sub = ImageInfo(h) + "  ·  " + Ago(h.CopiedAt),
+                                Tag = "clip",
+                                ImagePath = imagePath,
+                            }));
+                        }
+                        continue;
+                    }
+
                     if (!h.Text.Contains(q, StringComparison.OrdinalIgnoreCase)) continue;
                     scored.Add((6, new Item
                     {
@@ -1391,6 +1464,18 @@ public sealed class PickerForm : Form
             return;
         }
 
+        if (item.ImagePath is { Length: > 0 } imagePath)
+        {
+            _busyClosing = true;
+            var imageTarget = _target;
+            Hide();
+            _search.Text = "";
+            _target = IntPtr.Zero;
+            _busyClosing = false;
+            _app.CommitImage(imagePath, imageTarget);
+            return;
+        }
+
         string? text = item.Block is not null ? item.Block.Resolve() : item.Paste;
         if (string.IsNullOrEmpty(text)) return;
 
@@ -1852,6 +1937,61 @@ public sealed class PickerForm : Form
         }
     }
 
+    private Bitmap? ThumbFor(string path)
+    {
+        if (_thumbs.TryGetValue(path, out var cached)) return cached;
+
+        if (_thumbs.Count > 80)
+        {
+            foreach (var stale in _thumbs.Values) stale?.Dispose();
+            _thumbs.Clear();
+        }
+
+        Bitmap? thumb = null;
+        try
+        {
+            using var source = new Bitmap(path);
+            float scale = Math.Min(1f, 256f / Math.Max(source.Width, source.Height));
+            int w = Math.Max(1, (int)Math.Round(source.Width * scale));
+            int h = Math.Max(1, (int)Math.Round(source.Height * scale));
+            thumb = new Bitmap(w, h);
+            using var g = Graphics.FromImage(thumb);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.DrawImage(source, 0, 0, w, h);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Could not load image clip " + path, ex);
+        }
+        _thumbs[path] = thumb;
+        return thumb;
+    }
+
+    private static string ImageInfo(HistoryEntry entry)
+    {
+        if (entry.ImageWidth > 0 && entry.ImageHeight > 0)
+            return entry.ImageWidth + " × " + entry.ImageHeight;
+        try
+        {
+            using var stream = File.OpenRead(entry.ImagePath!);
+            using var image = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: false);
+            return image.Width + " × " + image.Height;
+        }
+        catch
+        {
+            return "Image";
+        }
+    }
+
+    private static RectangleF FitImage(Size size, RectangleF box)
+    {
+        float scale = Math.Min(box.Width / size.Width, box.Height / size.Height);
+        float w = size.Width * scale;
+        float h = size.Height * scale;
+        return new RectangleF(box.X + (box.Width - w) / 2f, box.Y + (box.Height - h) / 2f, w, h);
+    }
+
     private void DrawCard(Graphics g, int index, RectangleF r)
     {
         var item = _items[index];
@@ -1870,15 +2010,33 @@ public sealed class PickerForm : Form
             new RectangleF(r.X + S(11), r.Y + S(8), S(16), S(14)),
             TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
 
-        string tag = _mode is Mode.Search or Mode.Dates ? item.Tag : "";
+        float thumbW = 0;
+        if (item.ImagePath is { Length: > 0 } imagePath && ThumbFor(imagePath) is { } thumb)
+        {
+            float boxH = r.Height - S(16);
+            float boxW = Math.Min(S(120), boxH * thumb.Width / thumb.Height);
+            var box = new RectangleF(r.Right - S(10) - boxW, r.Y + S(8), boxW, boxH);
+
+            var state = g.Save();
+            using (var clip = Theme.RoundRect(box, S(3)))
+            {
+                g.SetClip(clip, CombineMode.Intersect);
+                g.DrawImage(thumb, FitImage(thumb.Size, box));
+            }
+            g.Restore(state);
+            Theme.StrokeRound(g, box, S(3), Theme.WithAlpha(Theme.Border, 170), 1f);
+            thumbW = boxW + S(12);
+        }
+
+        string tag = item.ImagePath is null && _mode is Mode.Search or Mode.Dates ? item.Tag : "";
         float textX = r.X + S(32);
         float tagW = tag.Length > 0 ? Theme.Measure(tag, _fTag).Width : 0;
 
         Theme.TextIn(g, item.Title, selected ? _fTitleBold : _fTitle, Theme.Text,
-            new RectangleF(textX, r.Y + S(6), r.Right - textX - S(12), S(18)),
+            new RectangleF(textX, r.Y + S(6), r.Right - textX - S(12) - thumbW, S(18)),
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
 
-        float subW = r.Width - (textX - r.X) - S(12) - (tagW > 0 ? tagW + S(10) : 0);
+        float subW = r.Width - (textX - r.X) - S(12) - thumbW - (tagW > 0 ? tagW + S(10) : 0);
         TextWrap(g, item.Sub, _fSub, Theme.Faint,
             new RectangleF(textX, r.Y + S(24), subW, r.Height - S(24) - S(8)), 2);
 

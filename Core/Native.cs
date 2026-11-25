@@ -21,6 +21,7 @@ internal static class Native
     public const int VK_SHIFT = 0x10;
     public const int VK_CONTROL = 0x11;
     public const int VK_MENU = 0x12;
+    public const int VK_ESCAPE = 0x1B;
 
     public const uint INPUT_KEYBOARD = 1;
     public const uint KEYEVENTF_KEYUP = 0x0002;
@@ -301,6 +302,28 @@ internal static class Native
             SetWindowTheme(control.Handle, light ? null : "DarkMode_Explorer", subId);
         }
         catch { }
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    public static void SendEscape()
+    {
+        var inputs = new INPUT[2];
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].u.ki.wVk = VK_ESCAPE;
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].u.ki.wVk = VK_ESCAPE;
+        inputs[1].u.ki.dwFlags = KEYEVENTF_KEYUP;
+        if (SendInput(2, inputs, Marshal.SizeOf<INPUT>()) != 2)
+            Log.Error("SendInput failed for Esc");
+    }
+
+    public static void SetTopMost(IntPtr hwnd, bool on)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        SetWindowPos(hwnd, on ? new IntPtr(-1) : new IntPtr(-2), 0, 0, 0, 0,
+            0x0001 | 0x0002 | 0x0010 | 0x0040); // NOSIZE | NOMOVE | NOACTIVATE | SHOWWINDOW
     }
 
     public static void ForceForeground(IntPtr hwnd)

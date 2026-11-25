@@ -106,6 +106,9 @@ public static class TabColors
 public sealed class HistoryEntry
 {
     public string Text { get; set; } = "";
+    public string? ImagePath { get; set; }
+    public int ImageWidth { get; set; }
+    public int ImageHeight { get; set; }
     public DateTime CopiedAt { get; set; } = DateTime.Now;
 }
 

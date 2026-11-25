@@ -34,7 +34,7 @@
 Windows' clipboard history is a list of what you copied, five minutes ago, in a column you
 cannot search. Clipped turns that same key into a workspace:
 
-- **History you can actually use** — everything you copied is captured and searchable, not just the last handful.
+- **History you can actually use** — everything you copied, text and screenshots, is captured and searchable, not just the last handful.
 - **Your own library** — tabs full of reusable snippets: emails, addresses, SQL, ticket numbers, signatures.
 - **Smart blocks** — text, `INC-{n}` templates that count up for you, number sequences, and today's date in any format.
 - **Emoji and GIFs** — nearly 1,900 emoji in Windows colour or clean monochrome outline, plus GIF search.
@@ -50,6 +50,11 @@ cannot search. Clipped turns that same key into a workspace:
 Every text copy is captured in the background and stored locally. Filter it with a keystroke,
 re-pick it with <kbd>Enter</kbd>, delete single entries, or clear the lot. History size is
 configurable (10–500 entries, 150 by default).
+
+Screenshots — including <kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> and Snipping Tool copies —
+land in the same list with a thumbnail, so you can paste one back without opening the tool again.
+Image clips are pruned automatically (the newest 30, about 100 MB in total) so they cannot fill
+the disk.
 
 ### 🗄️ One dashboard
 Everything lives in a single window with three pages — **Library** (your tabs and blocks),
@@ -110,7 +115,7 @@ like it belongs on your desktop — and it repaints the instant your system them
 
 ### 🔒 Local by default
 There is no account, no cloud and no telemetry. Your library and history live in a single
-JSON file on your machine.
+JSON file on your machine; image clips are kept as PNG files in its `images` folder.
 
 <p align="center">
   <img src="docs/assets/picker-search.gif" alt="Searching the clipboard history" width="780">

@@ -36,6 +36,11 @@ public sealed class AppController : ApplicationContext
 
         _watcher = new ClipboardWatcher();
         _watcher.TextCopied += text => Store.AddHistory(text);
+        _watcher.ImageCopied += image =>
+        {
+            try { Store.AddImageHistory(image); }
+            finally { image.Dispose(); }
+        };
 
         _pasteTimer = new System.Windows.Forms.Timer { Interval = 70 };
         _pasteTimer.Tick += (_, _) =>
@@ -270,15 +275,21 @@ public sealed class AppController : ApplicationContext
 
     private void OnHotkey()
     {
-        try
+        // Runs inside the low-level keyboard hook callback. Do the work on the UI
+        // thread: a slow callback can make Windows silently drop the hook, after
+        // which the shortcut stops working until the app restarts.
+        _ui?.Post(_ =>
         {
-            Log.Info("Hotkey fired");
-            TogglePicker();
-        }
-        catch (Exception ex)
-        {
-            Log.Error("Hotkey handler crashed", ex);
-        }
+            try
+            {
+                Log.Info("Hotkey fired");
+                TogglePicker();
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Hotkey handler crashed", ex);
+            }
+        }, null);
     }
 
     public void TogglePicker()

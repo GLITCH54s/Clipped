@@ -1290,6 +1290,10 @@ public sealed class DashboardForm : Form
                 if (_syncing) return;
                 _owner.App.Store.Data.Settings.Hotkey = _hotkey.Value;
                 _owner.App.Store.Save();
+                // Windows reserves Win+V, so that shortcut only exists as the takeover.
+                if (_hotkey.Value.Trim().Equals("Win+V", StringComparison.OrdinalIgnoreCase) &&
+                    !_owner.App.Store.Data.Settings.TakeOverWinV)
+                    _owner.App.SetTakeOverWinV(true);
                 _owner.App.ApplyHotkey();
             };
 

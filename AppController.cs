@@ -16,6 +16,7 @@ public sealed class AppController : ApplicationContext
     private readonly bool _headless;
     public bool Headless => _headless;
     private NotifyIcon? _tray;
+    private const string FallbackHotkey = "Ctrl+Shift+Space";
     private readonly EventWaitHandle? _activate;
     private readonly SynchronizationContext? _ui;
     private readonly System.Windows.Forms.Timer _pasteTimer;
@@ -120,6 +121,19 @@ public sealed class AppController : ApplicationContext
         var settings = Store.Data.Settings;
         if (settings.TakeOverWinV == on) return;
         settings.TakeOverWinV = on;
+        var custom = HotkeyHook.Parse(settings.Hotkey);
+        if (!on && custom is not null && IsWinV(custom))
+        {
+            // Win+V is reserved while we no longer hook it; a dead shortcut would leave
+            // the tray as the only way in.
+            settings.Hotkey = FallbackHotkey;
+            _tray?.ShowBalloonTip(4000, "Win+V is Windows' again",
+                "Clipped now opens with " + FallbackHotkey + ". Change it in Settings.", ToolTipIcon.Info);
+        }
+        else if (on && string.Equals(settings.Hotkey?.Trim(), FallbackHotkey, StringComparison.OrdinalIgnoreCase))
+        {
+            settings.Hotkey = "Win+V";
+        }
         Store.Save();
         Log.Info("Win+V takeover " + (on ? "on" : "off"));
         if (!on && !settings.ShowTrayIcon && !HasOtherHotkey())
@@ -142,9 +156,18 @@ public sealed class AppController : ApplicationContext
     {
         if (_headless) return;
         var settings = Store.Data.Settings;
-        var combos = new List<HotkeyHook.Combo>();
 
         // The custom field holds "Win+V" by default — it is the takeover, not an extra combo.
+        // Stale data can leave Win+V configured with the takeover off, which registers nothing.
+        var stale = HotkeyHook.Parse(settings.Hotkey);
+        if (!settings.TakeOverWinV && stale is not null && IsWinV(stale))
+        {
+            settings.Hotkey = FallbackHotkey;
+            Store.Save();
+            Log.Info("Win+V is Windows' own while takeover is off; shortcut moved to " + FallbackHotkey);
+        }
+
+        var combos = new List<HotkeyHook.Combo>();
         var custom = HotkeyHook.Parse(settings.Hotkey);
         if (custom is not null && (custom.HasModifier || custom.IsFunctionKey) &&
             (!IsWinV(custom) || settings.TakeOverWinV))

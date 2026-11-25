@@ -28,7 +28,8 @@ public sealed class PickerForm : Form
     }
 
     private const int BaseW = 368;
-    private const int BaseH = 616;
+    private const int BaseH = 500;
+    private const int BaseGifH = 616;
     private const int BasePad = 24;
     private const int BaseFooterH = 48;
     private const int BaseTabsY = 24;
@@ -107,6 +108,9 @@ public sealed class PickerForm : Form
     private CancellationTokenSource? _gifCts;
     private readonly System.Windows.Forms.Timer _gifTimer;
     private readonly System.Windows.Forms.Timer _gifSearchTimer;
+    private readonly System.Windows.Forms.Timer _dismissTimer;
+    private int _focusRetried;
+    private bool _everFocused;
 
     private Font _fPanelTitle = Theme.Display(15f, FontStyle.Bold);
     private Font _fTitle = Theme.Ui(9.8f);
@@ -163,6 +167,11 @@ public sealed class PickerForm : Form
             _gifSearchTimer.Stop();
             LoadGifs(_search.Text.Trim());
         };
+
+        // A form that never received activation gets no Deactivate, so clicking away
+        // left it on top of everything. Watch the foreground window while open instead.
+        _dismissTimer = new System.Windows.Forms.Timer { Interval = 200 };
+        _dismissTimer.Tick += (_, _) => WatchForeground();
 
         MouseWheel += (_, e) =>
         {
@@ -228,6 +237,7 @@ public sealed class PickerForm : Form
         ResetGifState();
 
         ApplyMetrics();
+        ResizeToMode();
         PositionOnCursorMonitor();
         Build();
         Show();
@@ -236,6 +246,9 @@ public sealed class PickerForm : Form
         _search.Focus();
         _search.Select(_search.TextLength, 0);
         Invalidate();
+        _focusRetried = 0;
+        _everFocused = false;
+        if (!_app.Headless) _dismissTimer.Start();
     }
 
     internal void PreviewTab(string tabId) => SwitchTab(tabId);
@@ -252,12 +265,53 @@ public sealed class PickerForm : Form
 
     public void ClosePicker()
     {
+        _dismissTimer.Stop();
         if (!Visible) return;
         _busyClosing = false;
         Hide();
         _search.Text = "";
         _target = IntPtr.Zero;
         ResetGifState();
+    }
+
+    private void WatchForeground()
+    {
+        if (!Visible) { _dismissTimer.Stop(); return; }
+        int age = unchecked(Environment.TickCount - _openedAt);
+        if (age < 200) return;
+
+        var fg = Native.GetForegroundWindow();
+        if (fg == IntPtr.Zero) return;
+        if (fg == Handle) { _everFocused = true; return; }
+        Native.GetWindowThreadProcessId(fg, out uint pid);
+        if (pid == (uint)Environment.ProcessId) return;
+
+        // We had focus and the user clicked away — the Deactivate handler may have
+        // bailed on focus timing, so dismiss here too.
+        if (_everFocused)
+        {
+            if (age > 350)
+            {
+                Log.Info("Picker dismissed: focus moved to " + fg);
+                ClosePicker();
+            }
+            return;
+        }
+
+        // Never activated: another app owns the foreground and refuses to yield.
+        // Retry a couple of times, then drop the panel rather than leave it stuck on top.
+        if (age < 1000 && _focusRetried < 2)
+        {
+            _focusRetried++;
+            Native.ForceForeground(Handle);
+            _search.Focus();
+            return;
+        }
+        if (age >= 1400)
+        {
+            Log.Info("Picker dismissed: never took focus");
+            ClosePicker();
+        }
     }
 
     protected override void OnDeactivate(EventArgs e)
@@ -279,11 +333,7 @@ public sealed class PickerForm : Form
         _iconSize = Math.Clamp(_app.Store.Data.Settings.PickerIconSize, 24, 48) * _s;
 
         SuspendLayout();
-        var work = Screen.FromPoint(Cursor.Position).WorkingArea;
-        int margin = (int)(16 * _s);
-        ClientSize = new Size(
-            Math.Min((int)(BaseW * _s), work.Width - margin),
-            Math.Min((int)(BaseH * _s), work.Height - margin));
+        ResizeToMode();
         ResumeLayout(false);
 
         _fPanelTitle = Theme.Display(15f, FontStyle.Bold);
@@ -300,6 +350,32 @@ public sealed class PickerForm : Form
 
         RoundCorners();
         LayoutSearch();
+        Invalidate();
+    }
+
+    private int TargetHDip() => _mode == Mode.Gif ? BaseGifH : BaseH;
+
+    private void ResizeToMode()
+    {
+        var work = Screen.FromPoint(Cursor.Position).WorkingArea;
+        int margin = (int)(16 * _s);
+        ClientSize = new Size(
+            Math.Min((int)(BaseW * _s), work.Width - margin),
+            Math.Min((int)(TargetHDip() * _s), work.Height - margin));
+    }
+
+    private void SyncSize()
+    {
+        if (!Visible) return;
+        var work = Screen.FromPoint(Cursor.Position).WorkingArea;
+        int h = Math.Min((int)(TargetHDip() * _s), work.Height - (int)(16 * _s));
+        if (ClientSize.Height == h) return;
+        SuspendLayout();
+        ClientSize = new Size(ClientSize.Width, h);
+        ResumeLayout(false);
+        RoundCorners();
+        LayoutSearch();
+        PositionOnCursorMonitor();
         Invalidate();
     }
 
@@ -535,6 +611,7 @@ public sealed class PickerForm : Form
 
         if (_sel >= _items.Count) _sel = _items.Count - 1;
         if (_sel < 0) _sel = 0;
+        SyncSize();
         Invalidate();
     }
 

@@ -145,7 +145,14 @@ public sealed class HotkeyHook : IDisposable
     private readonly Native.LowLevelKeyboardProc _proc;
     private IntPtr _hook = IntPtr.Zero;
     private readonly HashSet<int> _held = new();
-    private bool _swallowWinUp;
+    // While a Win chord is being decided the physical Win down is swallowed; the OS must
+    // never see a Win down whose up we later eat, or every following keystroke turns into
+    // a Win shortcut. Non-combo chords are replayed to the OS with SendInput instead.
+    private bool _capture;
+    private bool _replayed;
+    private int _replayVk;
+    private int _comboVk;
+    private bool _comboFired;
 
     private List<Combo> _combos = new();
     public event Action? Pressed;
@@ -184,40 +191,133 @@ public sealed class HotkeyHook : IDisposable
         bool isDown = msg is Native.WM_KEYDOWN or Native.WM_SYSKEYDOWN;
         bool isUp = msg is Native.WM_KEYUP or Native.WM_SYSKEYUP;
         int vk = (int)info.vkCode;
+        bool winKey = vk is Native.VK_LWIN or Native.VK_RWIN;
 
-        if (isUp)
+        if (isUp) _held.Remove(vk);
+
+        // Safety net: Win was released without us seeing the up (secure desktop, hook
+        // chain change). Drop the capture so the desktop never keeps a phantom Win.
+        if (_capture && !winKey && !Down(Native.VK_LWIN) && !Down(Native.VK_RWIN))
+            EndCapture(injectStart: false);
+
+        if (isDown && winKey && !_capture && _combos.Exists(c => c.Win))
         {
-            _held.Remove(vk);
-            if (_swallowWinUp && (vk == Native.VK_LWIN || vk == Native.VK_RWIN))
+            _capture = true;
+            _comboFired = false;
+            _comboVk = 0;
+            _replayed = false;
+            _replayVk = 0;
+            return (IntPtr)1;
+        }
+
+        if (_capture)
+        {
+            if (isDown)
             {
-                if (!Down(Native.VK_LWIN) && !Down(Native.VK_RWIN)) _swallowWinUp = false;
+                if (winKey) return (IntPtr)1;
+
+                if (IsPlainModifier(vk))
+                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+
+                foreach (var combo in _combos)
+                {
+                    if (!combo.Win || vk != combo.Key) continue;
+                    if (!ModifiersMatch(combo)) continue;
+                    bool first = _held.Add(vk);
+                    _comboVk = vk;
+                    _comboFired = true;
+                    if (first) Pressed?.Invoke();
+                    return (IntPtr)1;
+                }
+
+                if (!_replayed)
+                {
+                    InjectKey(Native.VK_LWIN, up: false);
+                    _replayed = true;
+                }
+                _replayVk = vk;
+                InjectKey(vk, up: false);
                 return (IntPtr)1;
             }
+
+            if (isUp)
+            {
+                if (vk == _comboVk)
+                {
+                    _comboVk = 0;
+                    return (IntPtr)1;
+                }
+
+                if (winKey)
+                {
+                    EndCapture(injectStart: !_comboFired && !_replayed);
+                    return (IntPtr)1;
+                }
+
+                if (IsPlainModifier(vk))
+                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+
+                if (vk == _replayVk)
+                {
+                    _replayVk = 0;
+                    InjectKey(vk, up: true);
+                }
+                return (IntPtr)1;
+            }
+
             return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
         }
 
-        if (!isDown) return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
-
-        if (vk == 0) return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
-
-        foreach (var combo in _combos)
+        if (isDown && vk != 0)
         {
-            if (vk != combo.Key) continue;
-            bool win = Down(Native.VK_LWIN) || Down(Native.VK_RWIN);
-            bool ctrl = Down(Native.VK_CONTROL);
-            bool alt = Down(Native.VK_MENU);
-            bool shift = Down(Native.VK_SHIFT);
-
-            if (win == combo.Win && ctrl == combo.Ctrl && alt == combo.Alt && shift == combo.Shift)
+            foreach (var combo in _combos)
             {
+                if (combo.Win || vk != combo.Key) continue;
+                if (!ModifiersMatch(combo)) continue;
                 bool first = _held.Add(vk);
-                if (combo.Win) _swallowWinUp = true;
                 if (first) Pressed?.Invoke();
                 return (IntPtr)1;
             }
         }
 
         return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+    }
+
+    private static bool IsPlainModifier(int vk) =>
+        vk is Native.VK_SHIFT or Native.VK_CONTROL or Native.VK_MENU;
+
+    private bool ModifiersMatch(Combo combo) =>
+        Down(Native.VK_CONTROL) == combo.Ctrl &&
+        Down(Native.VK_MENU) == combo.Alt &&
+        Down(Native.VK_SHIFT) == combo.Shift;
+
+    private void EndCapture(bool injectStart)
+    {
+        int replayedKey = _replayVk;
+        bool replayedWin = _replayed;
+        _capture = false;
+        _comboVk = 0;
+        _comboFired = false;
+        _replayVk = 0;
+        _replayed = false;
+
+        if (replayedKey != 0) InjectKey(replayedKey, up: true);
+        if (replayedWin) InjectKey(Native.VK_LWIN, up: true);
+        if (injectStart)
+        {
+            InjectKey(Native.VK_LWIN, up: false);
+            InjectKey(Native.VK_LWIN, up: true);
+        }
+    }
+
+    private static void InjectKey(int vk, bool up)
+    {
+        var inputs = new Native.INPUT[1];
+        inputs[0].type = Native.INPUT_KEYBOARD;
+        inputs[0].u.ki.wVk = (ushort)vk;
+        if (up) inputs[0].u.ki.dwFlags = Native.KEYEVENTF_KEYUP;
+        if (Native.SendInput(1, inputs, Marshal.SizeOf<Native.INPUT>()) != 1)
+            Log.Error("SendInput failed for vk " + vk);
     }
 
     public void Dispose()

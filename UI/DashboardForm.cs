@@ -30,8 +30,9 @@ public sealed class DashboardForm : Form
         KeyPreview = true;
 
         _s = DeviceDpi / 96f;
-        Size = new Size((int)(1180 * _s), (int)(760 * _s));
-        MinimumSize = new Size((int)(1000 * _s), (int)(660 * _s));
+        var size = FitToWorkArea((int)(1020 * _s), (int)(680 * _s));
+        Size = size;
+        MinimumSize = new Size(Math.Min((int)(880 * _s), size.Width), Math.Min((int)(560 * _s), size.Height));
 
         _nav = new NavBar();
         _nav.SetItems(new[]
@@ -75,6 +76,13 @@ public sealed class DashboardForm : Form
 
         _app.Store.Changed += (_, _) => RefreshContents();
         ShowPage("library");
+    }
+
+    private Size FitToWorkArea(int width, int height)
+    {
+        var work = Screen.PrimaryScreen?.WorkingArea ?? Screen.GetWorkingArea(this);
+        int margin = (int)(24 * _s);
+        return new Size(Math.Min(width, work.Width - margin), Math.Min(height, work.Height - margin));
     }
 
     public void ShowPage(string page)

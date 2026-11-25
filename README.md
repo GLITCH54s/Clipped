@@ -148,7 +148,7 @@ writes both artifacts into `%CLIPPED_BUILD_DIR%\dist` (defaults to a `build/clip
 folder beside the repo).
 
 - **`Clipped-Setup-0.1.0.exe`** — per-user install into `%LOCALAPPDATA%\Programs\Clipped`, no
-  UAC needed. Adds Start-menu entries for the picker, the dashboard and settings, an optional
+  UAC needed. Adds a single Start-menu entry for the picker, an optional
   "launch at sign-in" task and a real uninstaller under **Settings → Apps**. The build is not
   code-signed, so SmartScreen warns on first run.
 - **`Clipped-0.1.0-portable.zip`** — unzip and run `Clipped.exe`. Nothing is installed.

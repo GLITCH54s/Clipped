@@ -54,11 +54,13 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+Type: files; Name: "{group}\Dashboard.lnk"
+Type: files; Name: "{group}\Settings.lnk"
+Type: files; Name: "{group}\Uninstall {#AppName}.lnk"
+
 [Icons]
 Name: "{group}\Clipped"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Parameters: "--picker"; Comment: "Open the Clipped clipboard picker"
-Name: "{group}\Dashboard"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Parameters: "--dashboard"
-Name: "{group}\Settings"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Parameters: "--settings"
-Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Clipped"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Parameters: "--picker"; Tasks: desktopicon
 
 [Registry]

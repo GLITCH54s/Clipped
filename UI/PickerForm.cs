@@ -27,8 +27,8 @@ public sealed class PickerForm : Form
         public EmojiEntry[] Entries = Array.Empty<EmojiEntry>();
     }
 
-    private const int BaseW = 508;
-    private const int BaseH = 572;
+    private const int BaseW = 416;
+    private const int BaseH = 636;
     private const int BasePad = 24;
     private const int BaseFooterH = 48;
     private const int BaseTabsY = 24;
@@ -227,8 +227,8 @@ public sealed class PickerForm : Form
         _suppress = false;
         ResetGifState();
 
-        PositionOnCursorMonitor();
         ApplyMetrics();
+        PositionOnCursorMonitor();
         Build();
         Show();
         _openedAt = Environment.TickCount;
@@ -279,7 +279,11 @@ public sealed class PickerForm : Form
         _iconSize = Math.Clamp(_app.Store.Data.Settings.PickerIconSize, 24, 48) * _s;
 
         SuspendLayout();
-        ClientSize = new Size((int)(BaseW * _s), (int)(BaseH * _s));
+        var work = Screen.FromPoint(Cursor.Position).WorkingArea;
+        int margin = (int)(16 * _s);
+        ClientSize = new Size(
+            Math.Min((int)(BaseW * _s), work.Width - margin),
+            Math.Min((int)(BaseH * _s), work.Height - margin));
         ResumeLayout(false);
 
         _fPanelTitle = Theme.Display(15f, FontStyle.Bold);
@@ -325,8 +329,8 @@ public sealed class PickerForm : Form
 
     private void PositionOnCursorMonitor()
     {
-        int w = (int)(BaseW * _s);
-        int h = (int)(BaseH * _s);
+        int w = ClientSize.Width;
+        int h = ClientSize.Height;
         int gap = (int)(8 * _s);
         var anchor = _target != IntPtr.Zero ? _target : Native.GetForegroundWindow();
 

@@ -82,6 +82,10 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern uint GetClipboardSequenceNumber();
 
+    /// <summary>True when Windows itself currently treats either Win key as held.</summary>
+    public static bool WinKeyDown() =>
+        (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0;
+
     [DllImport("user32.dll")]
     public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 

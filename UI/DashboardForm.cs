@@ -13,6 +13,7 @@ public sealed class DashboardForm : Form
     private readonly SettingsPage _settings;
     private readonly PillButton _min;
     private readonly PillButton _close;
+    private readonly WheelRouter _wheel;
     private string _page = "library";
     private float _s = 1f;
 
@@ -75,7 +76,22 @@ public sealed class DashboardForm : Form
         };
 
         _app.Store.Changed += (_, _) => RefreshContents();
+
+        // Wheel messages go to the focused control, so route them to the hand-scrolled
+        // settings page whenever the pointer is over it.
+        _wheel = new WheelRouter(this);
+        Application.AddMessageFilter(_wheel);
+
         ShowPage("library");
+    }
+
+    private bool RouteWheel(int delta)
+    {
+        if (delta == 0 || _page != "settings" || !_settings.Visible) return false;
+        if (_settings.FullHeight <= _settings.ClientSize.Height) return false;
+        if (!_settings.RectangleToScreen(_settings.ClientRectangle).Contains(Cursor.Position)) return false;
+        _settings.ScrollBy(delta);
+        return true;
     }
 
     private Size FitToWorkArea(int width, int height)
@@ -121,13 +137,11 @@ public sealed class DashboardForm : Form
     public Bitmap RenderFullSettingsShot()
     {
         _settings.Show();
-        _settings.AutoScrollPosition = new Point(0, 0);
         _settings.PerformLayout();
-        int fullH = Math.Max(_settings.AutoScrollMinSize.Height, _settings.ClientSize.Height);
+        int fullH = Math.Max(_settings.FullHeight, _settings.ClientSize.Height);
+        int scroll = _settings.ScrollOffset;
 
-        bool auto = _settings.AutoScroll;
         var oldSize = _settings.Size;
-        _settings.AutoScroll = false;
         _settings.Size = new Size(oldSize.Width, fullH);
         _settings.PerformLayout();
 
@@ -135,8 +149,8 @@ public sealed class DashboardForm : Form
         _settings.DrawToBitmap(page, new Rectangle(0, 0, page.Width, page.Height));
 
         _settings.Size = oldSize;
-        _settings.AutoScroll = auto;
         _settings.PerformLayout();
+        _settings.ScrollTo(scroll);
 
         var shot = new Bitmap(Width, (int)S(56) + page.Height);
         using (var g = Graphics.FromImage(shot))
@@ -183,6 +197,16 @@ public sealed class DashboardForm : Form
         e.Graphics.DrawLine(pen, _nav.Right - 1, 0, _nav.Right - 1, Height);
     }
 
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        if (RouteWheel(e.Delta))
+        {
+            if (e is HandledMouseEventArgs h) h.Handled = true;
+            return;
+        }
+        base.OnMouseWheel(e);
+    }
+
     private void LayoutAll()
     {
         _s = DeviceDpi / 96f;
@@ -219,6 +243,20 @@ public sealed class DashboardForm : Form
 
     internal float S(float v) => v * _s;
     internal AppController App => _app;
+
+    private sealed class WheelRouter : IMessageFilter
+    {
+        private const int WM_MOUSEWHEEL = 0x020A;
+        private readonly DashboardForm _form;
+        public WheelRouter(DashboardForm form) => _form = form;
+
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (m.Msg != WM_MOUSEWHEEL) return false;
+            int delta = (short)((long)m.WParam >> 16);
+            return _form.RouteWheel(delta);
+        }
+    }
 
     // =====================================================================
     internal sealed class LibraryPage : Panel
@@ -1086,6 +1124,10 @@ public sealed class DashboardForm : Form
         private readonly PillButton _uninstall;
         private readonly TextLabel _quitHint, _version, _gifKeyLabel, _gifHint;
         private readonly TextLabel _installVersion, _installPath, _installSize, _installHint;
+        private readonly ViewportPanel _viewport;
+        private readonly Card[] _cards;
+        private int _scroll;
+        private int _contentH;
         private bool _syncing;
 
         public SettingsPage(DashboardForm owner)
@@ -1093,7 +1135,12 @@ public sealed class DashboardForm : Form
             _owner = owner;
             DoubleBuffered = true;
             BackColor = Theme.Bg;
-            AutoScroll = true;
+            // WinForms AutoScroll moves children behind a LayoutPage that pins them back,
+            // so scroll the cards by hand inside a clipping viewport below the header.
+            AutoScroll = false;
+
+            _viewport = new ViewportPanel { BackColor = Theme.Bg };
+            Controls.Add(_viewport);
 
             _appearanceCard = new Card { Caption = "Appearance" };
             _hotkeyCard = new Card { Caption = "Shortcut" };
@@ -1102,13 +1149,8 @@ public sealed class DashboardForm : Form
             _windowsCard = new Card { Caption = "Windows integration" };
             _installCard = new Card { Caption = "Installation" };
             _aboutCard = new Card { Caption = "About" };
-            Controls.Add(_appearanceCard);
-            Controls.Add(_hotkeyCard);
-            Controls.Add(_behaviorCard);
-            Controls.Add(_gifCard);
-            Controls.Add(_windowsCard);
-            Controls.Add(_installCard);
-            Controls.Add(_aboutCard);
+            _cards = new[] { _appearanceCard, _hotkeyCard, _behaviorCard, _gifCard, _windowsCard, _installCard, _aboutCard };
+            foreach (var card in _cards) _viewport.Controls.Add(card);
 
             _themeSystem = new PillButton { Text = "System", Kind = PillButton.Style.Outline };
             _themeLight = new PillButton { Text = "Light", Kind = PillButton.Style.Outline };
@@ -1520,7 +1562,9 @@ public sealed class DashboardForm : Form
             int W = ClientSize.Width;
             int pad = (int)(26 * s);
             int cardW = W - pad * 2;
-            int y = (int)(92 * s);
+            int head = (int)(84 * s);
+            _viewport.Bounds = new Rectangle(0, head, Math.Max(10, W - (int)(12 * s)), Math.Max(10, ClientSize.Height - head));
+            int y = (int)(8 * s);
             int gap = (int)(12 * s);
 
             int appH = (int)(226 * s);
@@ -1588,15 +1632,43 @@ public sealed class DashboardForm : Form
             _version.SetBounds(cardW / 2, (int)(12 * s), cardW / 2 - (int)(36 * s), (int)(16 * s));
             y += (int)(150 * s) + gap;
 
-            AutoScrollMinSize = new Size(0, y + (int)(20 * s));
-            Native.ApplyControlTheme(this, Theme.IsLight, "ScrollBar");
-            if (IsHandleCreated) Native.ShowScrollBar(Handle, 1 /* SB_VERT */, false);
+            _contentH = y + (int)(8 * s);
+            _scroll = Math.Clamp(_scroll, 0, Math.Max(0, _contentH - _viewport.Height));
+            foreach (var card in _cards) card.Top -= _scroll;
         }
 
-        protected override void OnScroll(ScrollEventArgs se)
+        internal int FullHeight => _viewport.Top + _contentH;
+
+        internal int ScrollOffset => _scroll;
+
+        internal void ScrollTo(int value) => SetScroll(value);
+
+        private void SetScroll(int value)
         {
-            base.OnScroll(se);
+            value = Math.Clamp(value, 0, Math.Max(0, _contentH - _viewport.Height));
+            if (value == _scroll) return;
+            _scroll = value;
+            LayoutPage();
             Invalidate();
+            _viewport.Invalidate(true);
+        }
+
+        public void ScrollBy(int delta)
+        {
+            if (delta == 0) return;
+            int lines = SystemInformation.MouseWheelScrollLines;
+            float s = DeviceDpi / 96f;
+            int step = lines < 0
+                ? (int)Math.Round(-delta / 120f * _viewport.Height)
+                : (int)Math.Round(-delta / 120f * lines * 34 * s);
+            SetScroll(_scroll + step);
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            ScrollBy(e.Delta);
+            if (e is HandledMouseEventArgs h) h.Handled = true;
+            base.OnMouseWheel(e);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -1607,18 +1679,27 @@ public sealed class DashboardForm : Form
             Theme.TextAt(g, "Settings", Theme.Display(20f, FontStyle.Bold), Theme.Text, 26 * s, 16 * s);
             Theme.TextAt(g, "Appearance, shortcut, behavior and Windows integration.", Theme.Ui(9.8f), Theme.Faint, 27 * s, 54 * s);
 
-            int contentH = AutoScrollMinSize.Height;
-            int viewH = ClientSize.Height;
-            if (contentH > viewH)
+            int viewH = _viewport.Height;
+            int range = _contentH - viewH;
+            if (range > 0)
             {
-                float trackTop = 8 * s;
+                float trackTop = _viewport.Top + 8 * s;
                 float trackH = viewH - 16 * s;
-                float thumbH = Math.Max(28 * s, trackH * viewH / contentH);
-                float range = contentH - viewH;
-                float offset = Math.Clamp(-AutoScrollPosition.Y / range, 0f, 1f);
+                float thumbH = Math.Max(28 * s, trackH * viewH / Math.Max(1f, _contentH));
+                float offset = Math.Clamp(_scroll / (float)range, 0f, 1f);
                 var thumb = new RectangleF(Width - 7 * s, trackTop + (trackH - thumbH) * offset, 3 * s, thumbH);
                 Theme.FillRound(g, thumb, 1.5f * s, Theme.BorderHi);
             }
         }
+    }
+}
+
+/// <summary>Clipping surface for the hand-scrolled settings cards.</summary>
+internal sealed class ViewportPanel : Panel
+{
+    public ViewportPanel()
+    {
+        DoubleBuffered = true;
+        ResizeRedraw = true;
     }
 }

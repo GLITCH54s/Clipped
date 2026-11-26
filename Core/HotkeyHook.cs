@@ -155,12 +155,23 @@ public sealed class HotkeyHook : IDisposable
     private int _comboVk;
     private bool _comboFired;
 
+    private readonly System.Windows.Forms.Timer _expiry;
     private List<Combo> _combos = new();
     public event Action? Pressed;
 
     public HotkeyHook()
     {
         _proc = Callback;
+        // The Win up can be lost entirely (secure desktop, hook chain change). Expire the
+        // capture on a timer so a phantom Win down is always released, even if no further
+        // key arrives to run the check inside Callback.
+        _expiry = new System.Windows.Forms.Timer { Interval = 900 };
+        _expiry.Tick += (_, _) =>
+        {
+            if (!_capture || unchecked(Environment.TickCount - _captureAt) <= 2500) return;
+            Log.Info("Win capture expired without a key up");
+            EndCapture(injectStart: false);
+        };
     }
 
     public void Install()
@@ -174,6 +185,7 @@ public sealed class HotkeyHook : IDisposable
             Log.Error("Failed to install keyboard hook: " + Marshal.GetLastWin32Error());
         else
             Log.Info("Keyboard hook installed");
+        _expiry.Start();
     }
 
     public void Set(IEnumerable<Combo> combos) => _combos = combos.ToList();
@@ -307,7 +319,15 @@ public sealed class HotkeyHook : IDisposable
         _replayed = false;
 
         if (replayedKey != 0) InjectKey(replayedKey, up: true);
-        if (replayedWin) InjectKey(Native.VK_LWIN, up: true);
+
+        // Always release Win, even when we never injected a down: another hook in the chain
+        // can let the physical down through while we still eat the up, which leaves Windows
+        // treating every later click as Win+click. A stray up is harmless.
+        bool osHeldWin = Native.WinKeyDown();
+        if (replayedWin || osHeldWin) InjectKey(Native.VK_LWIN, up: true);
+        if (osHeldWin && !replayedWin)
+            Log.Info("Released a Win key the OS still held");
+
         if (injectStart)
         {
             InjectKey(Native.VK_LWIN, up: false);
@@ -327,6 +347,9 @@ public sealed class HotkeyHook : IDisposable
 
     public void Dispose()
     {
+        _expiry.Stop();
+        _expiry.Dispose();
+        if (_capture) EndCapture(injectStart: false);
         if (_hook != IntPtr.Zero)
         {
             Native.UnhookWindowsHookEx(_hook);

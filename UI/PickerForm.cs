@@ -115,6 +115,7 @@ public sealed class PickerForm : Form
     private int _focusRetried;
     private bool _everFocused;
     private bool _noActivate;
+    private IntPtr _flyout;
 
     private Font _fPanelTitle = Theme.Display(15f, FontStyle.Bold);
     private Font _fTitle = Theme.Ui(9.8f);
@@ -262,10 +263,13 @@ public sealed class PickerForm : Form
 
         if (_noActivate)
         {
+            _flyout = current;
             _ = Handle;
             Native.SetNoActivate(Handle, true);
             Show();
             Native.SetTopMost(Handle, true);
+            PositionBesideFlyout(current);
+            Log.Info($"Picker floated beside shell flyout at {Bounds}");
             _openedAt = Environment.TickCount;
             Invalidate();
             if (!_app.Headless) _dismissTimer.Start();
@@ -303,6 +307,7 @@ public sealed class PickerForm : Form
             // Leave the taskbar search with the keyboard exactly as we found it.
             if (IsHandleCreated) Native.SetNoActivate(Handle, false);
             _noActivate = false;
+            _flyout = IntPtr.Zero;
         }
         if (!Visible) return;
         _busyClosing = false;
@@ -440,14 +445,16 @@ public sealed class PickerForm : Form
         if (!Visible) return;
         var work = Screen.FromPoint(Cursor.Position).WorkingArea;
         float k = ScaleFactor();
+        int w = Math.Min((int)(BaseW * k), work.Width - (int)(16 * _s));
         int h = Math.Min((int)(TargetHDip() * k), work.Height - (int)(16 * _s));
-        if (ClientSize.Height == h) return;
+        if (ClientSize.Width == w && ClientSize.Height == h) return;
         SuspendLayout();
-        ClientSize = new Size(ClientSize.Width, h);
+        ClientSize = new Size(w, h);
         ResumeLayout(false);
         RoundCorners();
         LayoutSearch();
-        PositionOnCursorMonitor();
+        if (_noActivate && _flyout != IntPtr.Zero) PositionBesideFlyout(_flyout);
+        else PositionOnCursorMonitor();
         Invalidate();
     }
 
@@ -504,6 +511,44 @@ public sealed class PickerForm : Form
 
         x = Math.Clamp(x, work.Left + gap, Math.Max(work.Left + gap, work.Right - w - gap));
         y = Math.Clamp(y, work.Top + gap, Math.Max(work.Top + gap, work.Bottom - h - gap));
+        Bounds = new Rectangle(x, y, w, h);
+    }
+
+    // The Windows search flyout composites above every app window, topmost included, so
+    // an overlay can never cover it. Float in the wider gutter beside it instead, and
+    // narrow the panel only when neither side can hold the requested size.
+    private void PositionBesideFlyout(IntPtr flyout)
+    {
+        if (!Native.TryGetWindowRect(flyout, out var r))
+        {
+            PositionOnCursorMonitor();
+            return;
+        }
+
+        var mid = new Native.POINT { X = r.Left + (r.Right - r.Left) / 2, Y = r.Top + 8 };
+        var work = Native.WorkAreaForPoint(mid);
+        int gap = (int)(10 * _s);
+
+        int rightRoom = work.Right - r.Right;
+        int leftRoom = r.Left - work.Left;
+        bool useRight = rightRoom >= leftRoom;
+        int room = Math.Max(0, (useRight ? rightRoom : leftRoom) - gap * 2);
+
+        int minW = Math.Min((int)(260 * _s), work.Width / 2);
+        int w = Math.Min(ClientSize.Width, Math.Max(minW, room));
+        int h = Math.Min(ClientSize.Height, work.Height - gap * 2);
+
+        if (ClientSize.Width != w || ClientSize.Height != h)
+        {
+            SuspendLayout();
+            ClientSize = new Size(w, h);
+            ResumeLayout(false);
+            RoundCorners();
+            LayoutSearch();
+        }
+
+        int x = useRight ? work.Right - gap - w : work.Left + gap;
+        int y = Math.Clamp(r.Top, work.Top + gap, Math.Max(work.Top + gap, work.Bottom - h - gap));
         Bounds = new Rectangle(x, y, w, h);
     }
 

@@ -150,6 +150,19 @@ internal static class Native
         return true;
     }
 
+    /// <summary>Screen rect of another process's window, in physical pixels.</summary>
+    public static bool TryGetWindowRect(IntPtr hwnd, out Rectangle rect)
+    {
+        rect = Rectangle.Empty;
+        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var r)) return false;
+        if (r.Right <= r.Left || r.Bottom <= r.Top) return false;
+        rect = Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
+        return true;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 

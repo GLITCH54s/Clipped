@@ -21,7 +21,6 @@ internal static class Native
     public const int VK_SHIFT = 0x10;
     public const int VK_CONTROL = 0x11;
     public const int VK_MENU = 0x12;
-    public const int VK_ESCAPE = 0x1B;
 
     public const uint INPUT_KEYBOARD = 1;
     public const uint KEYEVENTF_KEYUP = 0x0002;
@@ -314,23 +313,49 @@ internal static class Native
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
-    public static void SendEscape()
-    {
-        var inputs = new INPUT[2];
-        inputs[0].type = INPUT_KEYBOARD;
-        inputs[0].u.ki.wVk = VK_ESCAPE;
-        inputs[1].type = INPUT_KEYBOARD;
-        inputs[1].u.ki.wVk = VK_ESCAPE;
-        inputs[1].u.ki.dwFlags = KEYEVENTF_KEYUP;
-        if (SendInput(2, inputs, Marshal.SizeOf<INPUT>()) != 2)
-            Log.Error("SendInput failed for Esc");
-    }
-
     public static void SetTopMost(IntPtr hwnd, bool on)
     {
         if (hwnd == IntPtr.Zero) return;
         SetWindowPos(hwnd, on ? new IntPtr(-1) : new IntPtr(-2), 0, 0, 0, 0,
             0x0001 | 0x0002 | 0x0010 | 0x0040); // NOSIZE | NOMOVE | NOACTIVATE | SHOWWINDOW
+    }
+
+    private const int GWL_EXSTYLE = -20;
+    private const long WS_EX_NOACTIVATE = 0x08000000;
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    /// <summary>
+    /// Makes a window refuse activation so clicks inside it leave the foreground app alone.
+    /// Used to float the picker over the taskbar search without closing the search.
+    /// </summary>
+    public static void SetNoActivate(IntPtr hwnd, bool on)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        try
+        {
+            long ex = IntPtr.Size == 8
+                ? GetWindowLongPtr64(hwnd, GWL_EXSTYLE).ToInt64()
+                : GetWindowLong32(hwnd, GWL_EXSTYLE);
+            long updated = on ? ex | WS_EX_NOACTIVATE : ex & ~WS_EX_NOACTIVATE;
+            if (updated == ex) return;
+            if (IntPtr.Size == 8) SetWindowLongPtr64(hwnd, GWL_EXSTYLE, new IntPtr(updated));
+            else SetWindowLong32(hwnd, GWL_EXSTYLE, (int)updated);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Could not change window activation style", ex);
+        }
     }
 
     public static void ForceForeground(IntPtr hwnd)

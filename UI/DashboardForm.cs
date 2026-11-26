@@ -33,7 +33,7 @@ public sealed class DashboardForm : Form
         _s = DeviceDpi / 96f;
         var size = FitToWorkArea((int)(1020 * _s), (int)(680 * _s));
         Size = size;
-        MinimumSize = new Size(Math.Min((int)(880 * _s), size.Width), Math.Min((int)(560 * _s), size.Height));
+        MinimumSize = new Size(Math.Min((int)(960 * _s), size.Width), Math.Min((int)(640 * _s), size.Height));
 
         _nav = new NavBar();
         _nav.SetItems(new[]
@@ -808,10 +808,16 @@ public sealed class DashboardForm : Form
             int W = ClientSize.Width, H = ClientSize.Height;
             int pad = (int)(26 * s);
             int top = (int)(92 * s);
-            int col1 = (int)(202 * s);
-            int col2 = (int)(300 * s);
             int gap = (int)(18 * s);
             int h = H - top - pad;
+
+            // Three columns share whatever the window gives us; the editor absorbs the
+            // leftover so the card can never run off the right edge. The middle card
+            // keeps enough width for six icon columns (three rows).
+            int content = Math.Max((int)(240 * s), W - pad * 2 - gap * 2);
+            int col1 = Math.Min((int)(202 * s), (int)(content * 0.22f));
+            int col2 = Math.Min((int)(300 * s), Math.Max((int)(258 * s), (int)(content * 0.38f)));
+            int edW = content - col1 - col2;
 
             _tabsCard.Bounds = new Rectangle(pad, top, col1, h);
             _tabs.SetBounds((int)(8 * s), (int)(38 * s), col1 - (int)(16 * s), h - (int)(38 * s) - (int)(46 * s));
@@ -820,19 +826,24 @@ public sealed class DashboardForm : Form
             int midX = pad + col1 + gap;
             _midCard.Bounds = new Rectangle(midX, top, col2, h);
 
-            _tabName.SetBounds((int)(12 * s), (int)(30 * s), (int)(148 * s), (int)(34 * s));
-            _tabKey.SetBounds((int)(168 * s), (int)(30 * s), (int)(38 * s), (int)(34 * s));
-            _deleteTab.SetBounds((int)(214 * s), (int)(30 * s), (int)(74 * s), (int)(34 * s));
-            _tabCount.SetBounds((int)(12 * s), (int)(68 * s), col2 - (int)(24 * s), (int)(16 * s));
+            int mPad = (int)(12 * s);
+            int rowGap = (int)(8 * s);
+            int keyW = (int)(34 * s);
+            int delW = (int)(64 * s);
+            int nameW = Math.Max((int)(40 * s), col2 - mPad * 2 - keyW - delW - rowGap * 2);
+            _tabName.SetBounds(mPad, (int)(30 * s), nameW, (int)(34 * s));
+            _tabKey.SetBounds(mPad + nameW + rowGap, (int)(30 * s), keyW, (int)(34 * s));
+            _deleteTab.SetBounds(mPad + nameW + rowGap * 2 + keyW, (int)(30 * s), delW, (int)(34 * s));
+            _tabCount.SetBounds(mPad, (int)(68 * s), col2 - mPad * 2, (int)(16 * s));
 
-            int iconW = col2 - (int)(24 * s);
-            _iconCaption.SetBounds((int)(12 * s), (int)(86 * s), iconW, (int)(12 * s));
+            int iconW = col2 - mPad * 2;
+            _iconCaption.SetBounds(mPad, (int)(86 * s), iconW, (int)(12 * s));
             int iconH = _iconPicker.HeightForWidth(iconW);
-            _iconPicker.SetBounds((int)(12 * s), (int)(100 * s), iconW, iconH);
+            _iconPicker.SetBounds(mPad, (int)(100 * s), iconW, iconH);
             int colorCaptionY = (int)(100 * s) + iconH + (int)(10 * s);
-            _colorCaption.SetBounds((int)(12 * s), colorCaptionY, iconW, (int)(12 * s));
+            _colorCaption.SetBounds(mPad, colorCaptionY, iconW, (int)(12 * s));
             int colorY = colorCaptionY + (int)(15 * s);
-            _colorPicker.SetBounds((int)(12 * s), colorY, iconW, (int)(28 * s));
+            _colorPicker.SetBounds(mPad, colorY, iconW, (int)(28 * s));
             int listY = colorY + (int)(28 * s) + (int)(10 * s);
 
             int btnW = (col2 - (int)(32 * s)) / 2;
@@ -842,11 +853,10 @@ public sealed class DashboardForm : Form
             _addSeq.SetBounds((int)(10 * s), btnY + (int)(36 * s), btnW, (int)(30 * s));
             _addDate.SetBounds((int)(12 * s) + btnW, btnY + (int)(36 * s), btnW, (int)(30 * s));
 
-            _blocks.SetBounds((int)(8 * s), listY, col2 - (int)(16 * s), h - listY - (int)(96 * s));
+            _blocks.SetBounds((int)(8 * s), listY, col2 - (int)(16 * s), Math.Max((int)(20 * s), h - listY - (int)(96 * s)));
 
             int edX = midX + col2 + gap;
-            int edW = W - edX - pad;
-            _editorCard.Bounds = new Rectangle(edX, top, Math.Max((int)(320 * s), edW), h);
+            _editorCard.Bounds = new Rectangle(edX, top, edW, h);
         }
 
         private void LayoutEditor()
@@ -872,7 +882,7 @@ public sealed class DashboardForm : Form
 
             int bx = (int)(18 * s);
             int by = (int)(126 * s);
-            int bw = Math.Max((int)(60 * s), Math.Min((int)(86 * s), (cw - (int)(24 * s)) / 4));
+            int bw = Math.Max((int)(42 * s), Math.Min((int)(86 * s), (cw - (int)(24 * s)) / 4));
             _kindText.SetBounds(bx, by, bw, (int)(30 * s));
             _kindTpl.SetBounds(bx + bw + (int)(8 * s), by, bw, (int)(30 * s));
             _kindSeq.SetBounds(bx + (bw + (int)(8 * s)) * 2, by, bw, (int)(30 * s));
@@ -886,7 +896,7 @@ public sealed class DashboardForm : Form
             bool showTpl = has && b!.Kind == BlockKind.Template;
 
             _valueField.Visible = showValue;
-            _valueField.SetBounds((int)(18 * s), (int)(190 * s), cw, (int)(180 * s));
+            _valueField.SetBounds((int)(18 * s), (int)(190 * s), cw, (int)((showTpl ? 130 : 180) * s));
 
             _seqStart.Visible = _seqEnd.Visible = _seqStep.Visible = showSeq;
             int sw = (cw - (int)(16 * s)) / 3;
@@ -900,11 +910,14 @@ public sealed class DashboardForm : Form
             _datePreview.SetBounds((int)(18 * s), (int)(234 * s), cw, (int)(20 * s));
 
             _tplCaption.Visible = _tplStart.Visible = _tplStep.Visible = _tplNext.Visible = _tplReset.Visible = showTpl;
-            _tplCaption.SetBounds((int)(18 * s), (int)(384 * s), cw, (int)(16 * s));
-            _tplStart.SetBounds((int)(18 * s), (int)(402 * s), (int)(110 * s), (int)(36 * s));
-            _tplStep.SetBounds((int)(136 * s), (int)(402 * s), (int)(110 * s), (int)(36 * s));
-            _tplNext.SetBounds((int)(262 * s), (int)(410 * s), Math.Max(80, cw - (int)(250 * s)), (int)(20 * s));
-            _tplReset.SetBounds(w - (int)(140 * s), (int)(402 * s), (int)(122 * s), (int)(32 * s));
+            int tplGap = (int)(8 * s);
+            int resetW = Math.Min((int)(122 * s), Math.Max((int)(92 * s), cw / 3));
+            int tplW = Math.Max((int)(56 * s), Math.Min((int)(110 * s), (cw - resetW - tplGap * 2) / 2));
+            _tplCaption.SetBounds((int)(18 * s), (int)(330 * s), cw, (int)(16 * s));
+            _tplStart.SetBounds((int)(18 * s), (int)(348 * s), tplW, (int)(36 * s));
+            _tplStep.SetBounds((int)(18 * s) + tplW + tplGap, (int)(348 * s), tplW, (int)(36 * s));
+            _tplNext.SetBounds((int)(18 * s), (int)(392 * s), cw, (int)(20 * s));
+            _tplReset.SetBounds(w - (int)(18 * s) - resetW, (int)(350 * s), resetW, (int)(32 * s));
 
             _contentCaption.Text = showSeq ? "RANGE" : showDate ? "FORMAT" : "CONTENT";
 
@@ -912,8 +925,9 @@ public sealed class DashboardForm : Form
             _datePreview.Visible = showDate;
 
             _deleteBlock.Visible = has;
-            _deleteBlock.SetBounds((int)(18 * s), h - (int)(50 * s), (int)(120 * s), (int)(32 * s));
-            _saved.SetBounds(w - (int)(120 * s), h - (int)(50 * s), (int)(100 * s), (int)(32 * s));
+            int footW = Math.Max((int)(70 * s), Math.Min((int)(120 * s), (w - (int)(44 * s)) / 2));
+            _deleteBlock.SetBounds((int)(18 * s), h - (int)(50 * s), footW, (int)(32 * s));
+            _saved.SetBounds(w - (int)(18 * s) - footW, h - (int)(50 * s), footW, (int)(32 * s));
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -1118,8 +1132,8 @@ public sealed class DashboardForm : Form
         private readonly SwitchToggle _trayIcon;
         private readonly TextLabel _winVLabel, _pasteLabel, _startupLabel, _integrationLabel, _trayLabel;
         private readonly TextLabel _themeHint, _accentHint, _emojiStyleLabel, _emojiStyleHint;
-        private readonly TextLabel _hotkeyHint, _winVHint, _limitLabel, _winHint, _iconSizeLabel;
-        private readonly FieldBox _limit, _iconSize, _gifKey;
+        private readonly TextLabel _hotkeyHint, _winVHint, _limitLabel, _winHint, _iconSizeLabel, _pickScaleLabel;
+        private readonly FieldBox _limit, _iconSize, _pickScale, _gifKey;
         private readonly PillButton _openApps, _openDefaults, _openData, _openLog, _quit;
         private readonly PillButton _uninstall;
         private readonly TextLabel _quitHint, _version, _gifKeyLabel, _gifHint;
@@ -1250,6 +1264,18 @@ public sealed class DashboardForm : Form
             _iconSize = new FieldBox();
             _iconSize.Input.TextAlign = HorizontalAlignment.Center;
             _behaviorCard.Controls.Add(_iconSize);
+
+            _pickScaleLabel = new TextLabel
+            {
+                ForeColor = Theme.Muted,
+                Font = Theme.Ui(8.8f),
+                Text = "%  ·  overall size of the clipboard flyout",
+            };
+            _behaviorCard.Controls.Add(_pickScaleLabel);
+
+            _pickScale = new FieldBox();
+            _pickScale.Input.TextAlign = HorizontalAlignment.Center;
+            _behaviorCard.Controls.Add(_pickScale);
 
             _gifKey = new FieldBox();
             _gifCard.Controls.Add(_gifKey);
@@ -1419,6 +1445,23 @@ public sealed class DashboardForm : Form
                 _syncing = false;
             };
 
+            _pickScale.Input.TextChanged += (_, _) =>
+            {
+                if (_syncing) return;
+                if (int.TryParse(_pickScale.Input.Text, out var n))
+                {
+                    n = Math.Clamp(n, 75, 150);
+                    _owner.App.Store.Data.Settings.PickerScalePercent = n;
+                    _owner.App.Store.Save();
+                }
+            };
+            _pickScale.Input.Leave += (_, _) =>
+            {
+                _syncing = true;
+                _pickScale.Input.Text = _owner.App.Store.Data.Settings.PickerScalePercent.ToString();
+                _syncing = false;
+            };
+
             _gifKey.Input.TextChanged += (_, _) =>
             {
                 if (_syncing) return;
@@ -1521,6 +1564,7 @@ public sealed class DashboardForm : Form
             _integration.Checked = st.WindowsIntegration;
             _limit.Input.Text = st.HistoryLimit.ToString();
             _iconSize.Input.Text = st.PickerIconSize.ToString();
+            _pickScale.Input.Text = st.PickerScalePercent.ToString();
             _gifKey.Input.Text = st.GifApiKey;
             _installVersion.Text = "Version " + WindowsIntegration.AppVersion;
             _installPath.Text = "Installed in " + WindowsIntegration.InstallFolder;
@@ -1589,7 +1633,7 @@ public sealed class DashboardForm : Form
             _winVHint.SetBounds((int)(18 * s), (int)(114 * s), cardW - (int)(36 * s), (int)(14 * s));
             y += (int)(150 * s) + gap;
 
-            _behaviorCard.Bounds = new Rectangle(pad, y, cardW, (int)(218 * s));
+            _behaviorCard.Bounds = new Rectangle(pad, y, cardW, (int)(264 * s));
             _paste.Bounds = new Rectangle((int)(18 * s), (int)(48 * s), (int)(42 * s), (int)(24 * s));
             _pasteLabel.SetBounds((int)(70 * s), (int)(48 * s), cardW - (int)(100 * s), (int)(24 * s));
             _trayIcon.Bounds = new Rectangle((int)(18 * s), (int)(84 * s), (int)(42 * s), (int)(24 * s));
@@ -1598,7 +1642,9 @@ public sealed class DashboardForm : Form
             _limitLabel.SetBounds((int)(112 * s), (int)(133 * s), cardW - (int)(130 * s), (int)(18 * s));
             _iconSize.SetBounds((int)(18 * s), (int)(168 * s), (int)(80 * s), (int)(34 * s));
             _iconSizeLabel.SetBounds((int)(112 * s), (int)(177 * s), cardW - (int)(130 * s), (int)(18 * s));
-            y += (int)(218 * s) + gap;
+            _pickScale.SetBounds((int)(18 * s), (int)(212 * s), (int)(80 * s), (int)(34 * s));
+            _pickScaleLabel.SetBounds((int)(112 * s), (int)(221 * s), cardW - (int)(130 * s), (int)(18 * s));
+            y += (int)(264 * s) + gap;
 
             _gifCard.Bounds = new Rectangle(pad, y, cardW, (int)(140 * s));
             _gifKey.SetBounds((int)(18 * s), (int)(44 * s), (int)(280 * s), (int)(38 * s));

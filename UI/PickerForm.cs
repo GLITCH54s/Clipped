@@ -98,6 +98,7 @@ public sealed class PickerForm : Form
     private bool _busyClosing;
     private float _s = 1f;
     private float _iconSize = 34f;
+    private int _scalePercent = 100;
     private IntPtr _target;
     private int _appliedDpi = -1;
 
@@ -113,7 +114,7 @@ public sealed class PickerForm : Form
     private readonly System.Windows.Forms.Timer _dismissTimer;
     private int _focusRetried;
     private bool _everFocused;
-    private bool _escSent;
+    private bool _noActivate;
 
     private Font _fPanelTitle = Theme.Display(15f, FontStyle.Bold);
     private Font _fTitle = Theme.Ui(9.8f);
@@ -212,6 +213,8 @@ public sealed class PickerForm : Form
         }
     }
 
+    protected override bool ShowWithoutActivation => _noActivate;
+
     public bool IsOpen => Visible;
 
     public void Open(IntPtr target)
@@ -240,22 +243,33 @@ public sealed class PickerForm : Form
         ResetGifState();
 
         ApplyMetrics();
+        // ApplyMetrics short-circuits when the DPI is unchanged, so re-read the
+        // size settings here to pick up changes made in the dashboard.
+        _iconSize = Math.Clamp(_app.Store.Data.Settings.PickerIconSize, 24, 48) * _s;
+        _scalePercent = Math.Clamp(_app.Store.Data.Settings.PickerScalePercent, 75, 150);
         ResizeToMode();
         PositionOnCursorMonitor();
         Build();
 
         _focusRetried = 0;
         _everFocused = false;
-        _escSent = false;
 
-        // Windows' own clipboard panel paints above the search flyout. Collapse the
-        // flyout up front and go topmost so ours does too instead of appearing behind it.
+        // The taskbar search flyout holds the foreground and closes when focus leaves
+        // it. Float a non-activating copy of the picker above it instead of grabbing
+        // focus, so the search stays open and picks paste straight back into it.
         var current = Native.GetForegroundWindow();
-        if (current != IntPtr.Zero && IsShellFlyout(current))
+        _noActivate = current != IntPtr.Zero && current != Handle && IsShellFlyout(current);
+
+        if (_noActivate)
         {
-            _escSent = true;
-            Native.SendEscape();
-            Log.Info("Shell flyout dismissed to take focus");
+            _ = Handle;
+            Native.SetNoActivate(Handle, true);
+            Show();
+            Native.SetTopMost(Handle, true);
+            _openedAt = Environment.TickCount;
+            Invalidate();
+            if (!_app.Headless) _dismissTimer.Start();
+            return;
         }
 
         Show();
@@ -284,6 +298,12 @@ public sealed class PickerForm : Form
     {
         _dismissTimer.Stop();
         if (IsHandleCreated) Native.SetTopMost(Handle, false);
+        if (_noActivate)
+        {
+            // Leave the taskbar search with the keyboard exactly as we found it.
+            if (IsHandleCreated) Native.SetNoActivate(Handle, false);
+            _noActivate = false;
+        }
         if (!Visible) return;
         _busyClosing = false;
         Hide();
@@ -304,6 +324,19 @@ public sealed class PickerForm : Form
         Native.GetWindowThreadProcessId(fg, out uint pid);
         if (pid == (uint)Environment.ProcessId) return;
 
+        // Non-activating mode: the search flyout stays foreground while we float above
+        // it. Dismiss once the flyout closes or the user moves to another app.
+        if (_noActivate)
+        {
+            if (IsShellFlyout(fg)) return;
+            if (age > 350)
+            {
+                Log.Info("Picker dismissed: taskbar search closed");
+                ClosePicker();
+            }
+            return;
+        }
+
         // We had focus and the user clicked away — the Deactivate handler may have
         // bailed on focus timing, so dismiss here too.
         if (_everFocused)
@@ -314,16 +347,6 @@ public sealed class PickerForm : Form
                 ClosePicker();
             }
             return;
-        }
-
-        // Never activated: another app owns the foreground and refuses to yield.
-        // The shell search flyout locks the foreground hard — AttachThreadInput and
-        // SetForegroundWindow both fail until it collapses, and only Esc collapses it.
-        if (!_escSent && age >= 450 && IsShellFlyout(fg))
-        {
-            _escSent = true;
-            Native.SendEscape();
-            Log.Info("Shell flyout dismissed to take focus");
         }
 
         if (age < 2200 && _focusRetried < 5)
@@ -361,7 +384,7 @@ public sealed class PickerForm : Form
     protected override void OnDeactivate(EventArgs e)
     {
         base.OnDeactivate(e);
-        if (_app.Headless) return;
+        if (_app.Headless || _noActivate) return;
         // Ignore focus churn from the window itself appearing; only an actual click-away closes.
         if (!_busyClosing && Visible && !ContainsFocus && Environment.TickCount - _openedAt > 350)
         {
@@ -375,6 +398,7 @@ public sealed class PickerForm : Form
         _appliedDpi = DeviceDpi;
         _s = Math.Clamp(DeviceDpi / 96f, 0.75f, 2f);
         _iconSize = Math.Clamp(_app.Store.Data.Settings.PickerIconSize, 24, 48) * _s;
+        _scalePercent = Math.Clamp(_app.Store.Data.Settings.PickerScalePercent, 75, 150);
 
         SuspendLayout();
         ResizeToMode();
@@ -399,20 +423,24 @@ public sealed class PickerForm : Form
 
     private int TargetHDip() => _mode == Mode.Gif ? BaseGifH : BaseH;
 
+    private float ScaleFactor() => _s * _scalePercent / 100f;
+
     private void ResizeToMode()
     {
         var work = Screen.FromPoint(Cursor.Position).WorkingArea;
+        float k = ScaleFactor();
         int margin = (int)(16 * _s);
         ClientSize = new Size(
-            Math.Min((int)(BaseW * _s), work.Width - margin),
-            Math.Min((int)(TargetHDip() * _s), work.Height - margin));
+            Math.Min((int)(BaseW * k), work.Width - margin),
+            Math.Min((int)(TargetHDip() * k), work.Height - margin));
     }
 
     private void SyncSize()
     {
         if (!Visible) return;
         var work = Screen.FromPoint(Cursor.Position).WorkingArea;
-        int h = Math.Min((int)(TargetHDip() * _s), work.Height - (int)(16 * _s));
+        float k = ScaleFactor();
+        int h = Math.Min((int)(TargetHDip() * k), work.Height - (int)(16 * _s));
         if (ClientSize.Height == h) return;
         SuspendLayout();
         ClientSize = new Size(ClientSize.Width, h);

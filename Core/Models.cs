@@ -123,6 +123,9 @@ public sealed class Settings
     public bool ShowTrayIcon { get; set; } = true;
     public int PickerIconSize { get; set; } = 34;
 
+    /// <summary>Overall clipboard flyout size as a percent of its base size.</summary>
+    public int PickerScalePercent { get; set; } = 100;
+
     /// <summary>"windows" (color Segoe UI Emoji) or "outline" (monochrome).</summary>
     public string EmojiStyle { get; set; } = "windows";
     public List<string> RecentEmoji { get; set; } = new();

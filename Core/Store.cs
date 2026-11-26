@@ -75,6 +75,7 @@ public sealed class Store
         }
         Data.Settings.HistoryLimit = Math.Clamp(Data.Settings.HistoryLimit, 10, 500);
         Data.Settings.PickerIconSize = Math.Clamp(Data.Settings.PickerIconSize, 24, 48);
+        Data.Settings.PickerScalePercent = Math.Clamp(Data.Settings.PickerScalePercent, 75, 150);
         if (Data.Settings.EmojiStyle is not ("windows" or "outline")) Data.Settings.EmojiStyle = "windows";
         Data.Settings.RecentEmoji ??= new List<string>();
         if (Data.Settings.RecentEmoji.Count > 24)
